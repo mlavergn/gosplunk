@@ -18,7 +18,7 @@ import (
 )
 
 // Version export
-const Version = "0.2.0"
+const Version = "0.2.1"
 
 // logger stand-in
 var dlog *oslog.Logger
@@ -89,6 +89,7 @@ type logLevels struct {
 
 // SplunkLog export
 var SplunkLog = logLevels{
+	Debug: "DEBUG",
 	Info:  "INFO",
 	Warn:  "WARN",
 	Error: "ERROR",
@@ -128,7 +129,10 @@ func NewSplunkPayload(index string, host string, event map[string]interface{}) *
 
 // JSON export
 func (id *SplunkPayload) JSON() []byte {
-	result, _ := json.Marshal(id)
+	result, err := json.Marshal(id)
+	if err != nil {
+		log.Println("failed to marshal to JSON", err)
+	}
 	return result
 }
 
