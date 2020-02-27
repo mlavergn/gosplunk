@@ -8,22 +8,22 @@
 
 .PHONY: test
 
-VERSION := 0.1.0
+VERSION := 0.2.0
 
 ver:
-	@sed -i '' 's/^const Version = "[0-9]\{1,3\}.[0-9]\{1,3\}.[0-9]\{1,3\}"/const Version = "${VERSION}"/' src/splunk/splunk.go
+	@sed -i '' 's/^const Version = "[0-9]\{1,3\}.[0-9]\{1,3\}.[0-9]\{1,3\}"/const Version = "${VERSION}"/' splunk.go
 
 lint:
-	$(shell go env GOPATH)/bin/golint ./src/...
+	$(shell go env GOPATH)/bin/golint ./...
 
 fmt:
-	go fmt ./src/...
+	go fmt ./...
 
 vet:
-	go vet ./src/...
+	go vet ./...
 
 build:
-	go build -v ./src/...
+	go build -v ./...
 
 clean:
 	go clean ...
@@ -32,10 +32,10 @@ demo: build
 	go build -o demo cmd/demo.go
 
 test: build
-	go test -v -count=1 ./src/...
+	go test -v -count=1 ./...
 
 github:
-	open "https://github.com/mlavergn/goupdate"
+	open "https://github.com/mlavergn/gosplunk"
 
 release:
 	zip -r gosplunk.zip LICENSE README.md Makefile cmd src

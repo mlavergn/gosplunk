@@ -1,2 +1,3 @@
-# gosplunk
-Go module for Splunk logging
+# Go Splunk
+
+Go module for Splunk HTTP logging
