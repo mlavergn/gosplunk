@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
-	"io"
 	"io/ioutil"
 	"log"
 	oslog "log"
@@ -136,98 +135,88 @@ func (id *SplunkPayload) JSON() []byte {
 	return result
 }
 
+// Map export
+func (id *SplunkPayload) Map() map[string]interface{} {
+	var result map[string]interface{}
+	err := json.Unmarshal(id.JSON(), &result)
+	if err != nil {
+		log.Println("failed to unmarshal json intermediary", err)
+	}
+	return result
+}
+
 // -----------------------------------------------------------------------------
 // Splunk
 
 // Splunk type
 type Splunk struct {
-	host      string
-	index     string
-	reader    *io.PipeReader
-	writer    *io.PipeWriter
-	bufWriter *bufio.Writer
-	token     string
-	rootURL   string
+	host    string
+	index   string
+	token   string
+	rootURL string
+	writer  *bufio.Writer
 }
 
 // NewSplunk init
-func NewSplunk(rootURL string, token string, bufferSize int, index string) *Splunk {
-	readPipe, writePipe := io.Pipe()
-	writer := bufio.NewWriterSize(writePipe, bufferSize)
+func NewSplunk(rootURL string, token string, index string, bufferSize int) *Splunk {
 	id := &Splunk{
-		reader:    readPipe,
-		writer:    writePipe,
-		bufWriter: writer,
-		token:     token,
-		rootURL:   rootURL,
-		index:     index,
+		token:   token,
+		rootURL: rootURL,
+		index:   index,
 	}
 	id.host, _ = os.Hostname()
+	id.writer = bufio.NewWriterSize(id, bufferSize)
 
+	// issue a flush every 15 seconds, regardless of there being any activity
 	go func() {
 		for true {
-			<-time.After(1 * time.Second)
-			id.Flush()
+			<-time.After(15 * time.Second)
+			id.writer.Flush()
 		}
 	}()
 
 	return id
 }
 
-// Log export
-func (id *Splunk) Log(level LogLevel, args ...string) {
-	dlog.Println("Splunk.Log")
-	id.LogToIndex(id.index, id.host, level, args...)
-}
-
-// LogToIndex export
-func (id *Splunk) LogToIndex(index string, host string, level LogLevel, args ...string) {
-	dlog.Println("Splunk.LogToIndex")
+// LogStrings helper for logging string varargs
+// NOTE: Assumes a convention of {severity: *, message: *}
+// Uses the instance init index and host values
+func (id *Splunk) LogStrings(level LogLevel, args ...string) {
+	dlog.Println("Splunk.LogStrings")
 	arg := strings.Join(args, " ")
 	event := map[string]interface{}{
 		"severity": level.String(),
 		"message":  arg,
 	}
-
-	payload := NewSplunkPayload(id.index, id.host, event)
-	id.bufWriter.Write(payload.JSON())
+	id.Log(id.index, id.host, event)
 }
 
-// Flush sends the log buffer to splunk for ingest
-func (id *Splunk) Flush() {
-	dlog.Println("Splunk.Flush")
-
-	go func() {
-		readLen := id.bufWriter.Buffered()
-		if readLen == 0 {
-			dlog.Println("Splunk.Flush no logs to flush")
-			return
-		}
-
-		// http requires an EOF for POST, so setup a transient reader to provide an EOF
-		buf := make([]byte, readLen)
-		id.reader.Read(buf)
-		payloadReader := bytes.NewReader(buf)
-
-		id.send(payloadReader)
-	}()
-
-	ferr := id.bufWriter.Flush()
-	if ferr != nil {
-		log.Println("Splunk.Flush failed to flush", ferr)
-		return
-	}
+// LogEvent helper for logging string keyed maps
+// Uses the instance init index and host values
+func (id *Splunk) LogEvent(event map[string]interface{}) {
+	dlog.Println("Splunk.LogEvent")
+	id.Log(id.index, id.host, event)
 }
 
-// send posts payloads from the reader to splunk for ingest
-func (id *Splunk) send(reader io.Reader) bool {
-	dlog.Println("Splunk.send")
+// Log is the lowest-level exposed Splunk interface making no assumptions other
+// than the instance endpoint and token
+func (id *Splunk) Log(index string, host string, event map[string]interface{}) {
+	dlog.Println("Splunk.Log")
+	payload := NewSplunkPayload(index, host, event)
+	id.writer.Write(payload.JSON())
+}
 
+// Write io.Writer API implementation
+// will get called when buffer ceil hit or flish triggered
+func (id *Splunk) Write(buffer []byte) (n int, err error) {
+	dlog.Println("Splunk.Write", len(buffer))
+
+	reader := bytes.NewReader(buffer)
 	url := id.rootURL + "/services/collector/event"
 	req, err := http.NewRequest(http.MethodPost, url, reader)
 	if err != nil {
 		log.Println("Splunk failed create request", err)
-		return false
+		return 0, err
 	}
 
 	req.Header.Add("Authorization", "Splunk "+id.token)
@@ -237,9 +226,9 @@ func (id *Splunk) send(reader io.Reader) bool {
 	resp, rerr := splunkShared.http.Do(req)
 	if rerr != nil {
 		log.Println("Splunk failed to post events", err)
-		return false
+		return 0, rerr
 	}
 	defer resp.Body.Close()
 
-	return true
+	return len(buffer), nil
 }

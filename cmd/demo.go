@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/mlavergn/gosplunk"
@@ -11,9 +12,11 @@ var token = "splunkto-kens-houl-bepl-acedintohere"
 var index = "demo"
 
 func main() {
-	splunk := gosplunk.NewSplunk(rootURL, token, 4096, index)
+	splunk := gosplunk.NewSplunk(rootURL, token, index, 4096)
 
-	splunk.Log(gosplunk.SplunkLog.Info, "gosplunk", "testA")
-	splunk.Log(gosplunk.SplunkLog.Info, "gosplunk", "testB")
+	for i := 0; i < 100; i++ {
+		splunk.LogStrings(gosplunk.SplunkLog.Info, "gosplunk", "test", strconv.Itoa(i))
+	}
+
 	<-time.After(1 * time.Minute)
 }
